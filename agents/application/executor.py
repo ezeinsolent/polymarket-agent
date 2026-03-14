@@ -156,18 +156,27 @@ class Executor:
         except Exception as ex:
             print(f"Filter error: {ex}")
             return events[:5]
+            
     def map_filtered_events_to_markets(
-        self, filtered_events: "list[SimpleEvent]"
-    ) -> "list[SimpleMarket]":
-        markets = []
-        for e in filtered_events:
-            data = json.loads(e[0].json())
-            market_ids = data["metadata"]["markets"].split(",")
-            for market_id in market_ids:
-                market_data = self.gamma.get_market(market_id)
-                formatted_market_data = self.polymarket.map_api_to_market(market_data)
-                markets.append(formatted_market_data)
-        return markets
+            self, filtered_events: "list[SimpleEvent]"
+        ) -> "list[SimpleMarket]":
+            markets = []
+            for e in filtered_events:
+                try:
+                    if hasattr(e, 'markets'):
+                        market_ids = e.markets.split(",")
+                    else:
+                        data = json.loads(e[0].json())
+                        market_ids = data["metadata"]["markets"].split(",")
+                    for market_id in market_ids:
+                        if market_id.strip():
+                            market_data = self.gamma.get_market(market_id.strip())
+                            formatted_market_data = self.polymarket.map_api_to_market(market_data)
+                            markets.append(formatted_market_data)
+                except Exception as ex:
+                    print(f"Market mapping error: {ex}")
+                    continue
+            return markets
 
     def filter_markets(self, markets) -> "list[tuple]":
         prompt = self.prompter.filter_markets()
