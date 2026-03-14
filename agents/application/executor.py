@@ -178,12 +178,32 @@ class Executor:
                     continue
             return markets
 
-    def filter_markets(self, markets) -> "list[tuple]":
-        prompt = self.prompter.filter_markets()
-        print()
-        print("... prompting ... ", prompt)
-        print()
-        return self.chroma.markets(markets, prompt)
+    def filter_markets(self, markets) -> list:
+        try:
+            markets_text = "\n".join([
+                f"- ID:{m.id if hasattr(m, 'id') else i} | {m.question if hasattr(m, 'question') else str(m)}"
+                for i, m in enumerate(markets[:20])
+            ])
+            prompt = f"""
+            {self.prompter.filter_markets()}
+            
+            Here are the available markets:
+            {markets_text}
+            
+            Return ONLY a Python list with the index numbers of the 3 best markets.
+            Example: [0, 2, 5]
+            Return ONLY the list, nothing else.
+            """
+            messages = [HumanMessage(content=prompt)]
+            result = self.llm.invoke(messages)
+            content = result.content.strip()
+            import ast
+            indices = ast.literal_eval(content)
+            filtered = [markets[i] for i in indices if i < len(markets)]
+            return filtered
+        except Exception as ex:
+            print(f"Filter markets error: {ex}")
+            return markets[:3]
 
     def source_best_trade(self, market_object) -> str:
         market_document = market_object[0].dict()
