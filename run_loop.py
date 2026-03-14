@@ -3,10 +3,11 @@ from agents.application.trade import Trader
 
 while True:
     try:
-        print("🚀 Ciclo del agente iniciado...")
+        print("Ciclo iniciado")
         t = Trader()
         t.one_best_trade()
     except Exception as e:
-        print(f"❌ Error: {e}")
-    print("⏳ Esperando 10 minutos para próximo ciclo...")
+        print(f"Error: {e}")
+        time.sleep(60)
+    print("Esperando 10 minutos...")
     time.sleep(600)
