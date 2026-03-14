@@ -288,7 +288,6 @@ class Polymarket:
         for event in events:
             if (
                 event.active
-                and not event.restricted
                 and not event.archived
                 and not event.closed
             ):
