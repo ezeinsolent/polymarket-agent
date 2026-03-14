@@ -35,6 +35,7 @@ class Trader:
             send_telegram("⚠️ <b>Sin eventos disponibles.</b> Saltando ciclo.")
             return
 
+        send_telegram("⏳ <b>Filtrando eventos con RAG...</b>")
         filtered_events = self.agent.filter_events_with_rag(events)
         print(f"2. FILTERED {len(filtered_events)} EVENTS")
         send_telegram(f"🔍 <b>Eventos filtrados:</b> {len(filtered_events)}")
