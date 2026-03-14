@@ -1,6 +1,7 @@
 import time
 from agents.application.trade import Trader
 
+# v2 - rate limit fix
 while True:
     try:
         print("Ciclo iniciado")
