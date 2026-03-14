@@ -31,20 +31,20 @@ def retain_keys(data, keys_to_retain):
 
 class Executor:
     def __init__(self, default_model='grok-3-mini') -> None:
-    load_dotenv()
-    max_token_model = {'grok-3-mini': 100000, 'grok-3': 100000}
-    self.token_limit = max_token_model.get(default_model, 100000)
-    self.prompter = Prompter()
-    self.openai_api_key = os.getenv("XAI_API_KEY")
-    self.llm = ChatOpenAI(
-        model=default_model,
-        temperature=0,
-        openai_api_key=os.getenv("XAI_API_KEY"),
-        openai_api_base="https://api.x.ai/v1",
-    )
-    self.gamma = Gamma()
-    self.chroma = Chroma()
-    self.polymarket = Polymarket()
+        load_dotenv()
+        max_token_model = {'grok-3-mini': 100000, 'grok-3': 100000}
+        self.token_limit = max_token_model.get(default_model, 100000)
+        self.prompter = Prompter()
+        self.openai_api_key = os.getenv("XAI_API_KEY")
+        self.llm = ChatOpenAI(
+            model=default_model,
+            temperature=0,
+            openai_api_key=os.getenv("XAI_API_KEY"),
+            openai_api_base="https://api.x.ai/v1",
+        )
+        self.gamma = Gamma()
+        self.chroma = Chroma()
+        self.polymarket = Polymarket()
 
     def get_llm_response(self, user_input: str) -> str:
         system_message = SystemMessage(content=str(self.prompter.market_analyst()))
