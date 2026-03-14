@@ -238,7 +238,13 @@ class Polymarket:
     def get_all_events(self) -> "list[SimpleEvent]":
         events = []
         try:
-            res = httpx.get(self.gamma_events_endpoint, timeout=30)
+            params = {
+                "active": "true",
+                "closed": "false",
+                "archived": "false",
+                "limit": "50"
+            }
+            res = httpx.get(self.gamma_events_endpoint, params=params, timeout=30)
             print(f"API Status: {res.status_code}")
             print(f"API Response length: {len(res.json())}")
             if res.status_code == 200:
