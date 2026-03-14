@@ -236,26 +236,26 @@ class Polymarket:
         return market
 
     def get_all_events(self) -> "list[SimpleEvent]":
-    events = []
-    try:
-        res = httpx.get(self.gamma_events_endpoint, timeout=30)
-        print(f"API Status: {res.status_code}")
-        print(f"API Response length: {len(res.json())}")
-        if res.status_code == 200:
-            data = res.json()
-            if len(data) == 0:
-                print("WARNING: API returned empty list")
-            for event in data:
-                try:
-                    print(1)
-                    event_data = self.map_api_to_event(event)
-                    events.append(SimpleEvent(**event_data))
-                except Exception as e:
-                    print(e)
-                    pass
-    except Exception as e:
-        print(f"API Connection error: {e}")
-    return events
+        events = []
+        try:
+            res = httpx.get(self.gamma_events_endpoint, timeout=30)
+            print(f"API Status: {res.status_code}")
+            print(f"API Response length: {len(res.json())}")
+            if res.status_code == 200:
+                data = res.json()
+                if len(data) == 0:
+                    print("WARNING: API returned empty list")
+                for event in data:
+                    try:
+                        print(1)
+                        event_data = self.map_api_to_event(event)
+                        events.append(SimpleEvent(**event_data))
+                    except Exception as e:
+                        print(e)
+                        pass
+        except Exception as e:
+            print(f"API Connection error: {e}")
+        return events
 
     def map_api_to_event(self, event) -> SimpleEvent:
         description = event["description"] if "description" in event.keys() else ""
