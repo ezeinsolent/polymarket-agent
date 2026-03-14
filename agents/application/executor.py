@@ -206,31 +206,34 @@ class Executor:
             return markets[:3]
 
     def source_best_trade(self, market_object) -> str:
-        market_document = market_object[0].dict()
-        market = market_document["metadata"]
-        outcome_prices = ast.literal_eval(market["outcome_prices"])
-        outcomes = ast.literal_eval(market["outcomes"])
-        question = market["question"]
-        description = market_document["page_content"]
+        try:
+            if hasattr(market_object, 'question'):
+                question = market_object.question
+                description = market_object.description if hasattr(market_object, 'description') else question
+                outcome_prices = market_object.outcome_prices if hasattr(market_object, 'outcome_prices') else "[0.5, 0.5]"
+                outcomes = market_object.outcomes if hasattr(market_object, 'outcomes') else "['Yes', 'No']"
+            else:
+                market_document = market_object[0].dict()
+                market = market_document["metadata"]
+                outcome_prices = ast.literal_eval(market["outcome_prices"])
+                outcomes = ast.literal_eval(market["outcomes"])
+                question = market["question"]
+                description = market_document["page_content"]
 
-        prompt = self.prompter.superforecaster(question, description, outcomes)
-        print()
-        print("... prompting ... ", prompt)
-        print()
-        result = self.llm.invoke(prompt)
-        content = result.content
+            prompt = self.prompter.superforecaster(question, description, outcomes)
+            result = self.llm.invoke(prompt)
+            content = result.content
+            print("superforecaster result: ", content[:200])
 
-        print("result: ", content)
-        print()
-        prompt = self.prompter.one_best_trade(content, outcomes, outcome_prices)
-        print("... prompting ... ", prompt)
-        print()
-        result = self.llm.invoke(prompt)
-        content = result.content
+            prompt = self.prompter.one_best_trade(content, outcomes, outcome_prices)
+            result = self.llm.invoke(prompt)
+            content = result.content
+            print("trade result: ", content[:200])
+            return content
 
-        print("result: ", content)
-        print()
-        return content
+        except Exception as ex:
+            print(f"source_best_trade error: {ex}")
+            return "price:0, size:0, side:NO_TRADE"
 
     def format_trade_prompt_for_execution(self, best_trade: str) -> float:
         data = best_trade.split(",")
