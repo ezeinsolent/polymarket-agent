@@ -174,29 +174,18 @@ class Prompter:
             self.polymarket_analyst_api()
             + f"""
 
-        FILTER THESE EVENTS. Select ONLY events that meet ALL criteria:
+        From the list of events provided, select the BEST 5 events for trading.
+        Choose events that have:
+        - Clear and verifiable outcomes
+        - High public interest (politics, economics, sports, crypto)
+        - Good potential for mispricing
 
-        1. Volume > $500,000
-        2. Resolution date < 90 days from today
-        3. Official and verifiable resolution source
-        4. Low manipulation or ambiguous resolution risk
-        5. Clear and objective outcome criteria
-        6. Exclude: celebrity/meme markets, subjective outcomes, rumor-dependent events
+        You MUST always return exactly 5 event IDs, no matter what.
+        Even if none are perfect, pick the 5 best available.
 
-        PRIORITIZE events with:
-        - High public verifiability
-        - Diverse and cross-checkable public information
-        - Real-time sentiment signal available via Grok/X
-        - Clear separation between YES and NO outcomes
-
-        If no events pass all filters, return empty list.
-        Order results by estimated potential edge (highest first).
-
-        Return for each event:
-        - event name
-        - reason for inclusion
-        - main risks
-        - quality score (1-10)
+        Return ONLY a Python list of 5 event IDs.
+        Example: [123, 456, 789, 101, 202]
+        Return ONLY the list, nothing else.
         """
         )
 
