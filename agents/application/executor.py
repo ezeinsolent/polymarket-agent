@@ -42,9 +42,9 @@ class Executor:
         openai_api_key=os.getenv("XAI_API_KEY"),
         openai_api_base="https://api.x.ai/v1",
     )
-        self.gamma = Gamma()
-        self.chroma = Chroma()
-        self.polymarket = Polymarket()
+    self.gamma = Gamma()
+    self.chroma = Chroma()
+    self.polymarket = Polymarket()
 
     def get_llm_response(self, user_input: str) -> str:
         system_message = SystemMessage(content=str(self.prompter.market_analyst()))
