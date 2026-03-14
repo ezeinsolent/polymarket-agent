@@ -41,4 +41,4 @@ class Trader:
         send_telegram(f"🔍 <b>Eventos filtrados:</b> {len(filtered_events)}")
 
         if not filtered_events:
-            send_telegram("⚠️ <b>
+            send_telegram("AVISO: Ningun mercado paso el filtro. Saltando ciclo.")
