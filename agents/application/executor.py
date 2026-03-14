@@ -131,32 +131,31 @@ class Executor:
         return result.content
 
     def filter_events_with_rag(self, events: "list[SimpleEvent]") -> list:
-    try:
-        events_text = "\n".join([
-            f"- ID:{e.id} | {e.title}"
-            for e in events[:30]
-        ])
-        prompt = f"""
-        {self.prompter.filter_events()}
-        
-        Here are the available events:
-        {events_text}
-        
-        Return ONLY a Python list of event IDs that pass the filter.
-        Example: [123, 456, 789]
-        Return ONLY the list, nothing else.
-        """
-        messages = [HumanMessage(content=prompt)]
-        result = self.llm.invoke(messages)
-        content = result.content.strip()
-        import ast
-        ids = ast.literal_eval(content)
-        filtered = [e for e in events if e.id in ids]
-        return filtered
-    except Exception as ex:
-        print(f"Filter error: {ex}")
-        return events[:5]
-
+        try:
+            events_text = "\n".join([
+                f"- ID:{e.id} | {e.title}"
+                for e in events[:30]
+            ])
+            prompt = f"""
+            {self.prompter.filter_events()}
+            
+            Here are the available events:
+            {events_text}
+            
+            Return ONLY a Python list of event IDs that pass the filter.
+            Example: [123, 456, 789]
+            Return ONLY the list, nothing else.
+            """
+            messages = [HumanMessage(content=prompt)]
+            result = self.llm.invoke(messages)
+            content = result.content.strip()
+            import ast
+            ids = ast.literal_eval(content)
+            filtered = [e for e in events if e.id in ids]
+            return filtered
+        except Exception as ex:
+            print(f"Filter error: {ex}")
+            return events[:5]
     def map_filtered_events_to_markets(
         self, filtered_events: "list[SimpleEvent]"
     ) -> "list[SimpleMarket]":
