@@ -44,10 +44,11 @@ class Trader:
             send_telegram("⚠️ <b>Ningún evento pasó el filtro.</b> Saltando ciclo.")
             return
 
+        send_telegram("⏳ <b>Mapeando eventos a mercados...</b>")
         markets = self.agent.map_filtered_events_to_markets(filtered_events)
         print(f"3. FOUND {len(markets)} MARKETS")
         send_telegram(f"🏪 <b>Mercados encontrados:</b> {len(markets)}")
-
+        
         if not markets:
             send_telegram("⚠️ <b>Sin mercados disponibles.</b> Saltando ciclo.")
             return
