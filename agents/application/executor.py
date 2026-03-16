@@ -2,20 +2,15 @@ import os
 import json
 import ast
 import re
+import requests
 from typing import List, Dict, Any
-
 import math
-
 from dotenv import load_dotenv
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-from langchain_openai import ChatOpenAI as ChatXAI
-
 from agents.polymarket.gamma import GammaMarketClient as Gamma
-from agents.connectors.chroma import PolymarketRAG as Chroma
 from agents.utils.objects import SimpleEvent, SimpleMarket
 from agents.application.prompts import Prompter
 from agents.polymarket.polymarket import Polymarket
+
 
 def retain_keys(data, keys_to_retain):
     if isinstance(data, dict):
@@ -29,108 +24,88 @@ def retain_keys(data, keys_to_retain):
     else:
         return data
 
-class Executor:
-    def __init__(self, default_model='grok-3-mini') -> None:
+
+class GrokClient:
+    def __init__(self):
         load_dotenv()
-        max_token_model = {'grok-3-mini': 100000, 'grok-3': 100000}
-        self.token_limit = max_token_model.get(default_model, 100000)
-        self.prompter = Prompter()
-        self.openai_api_key = os.getenv("XAI_API_KEY")
-        self.llm = ChatOpenAI(
-            model=default_model,
-            temperature=0,
-            openai_api_key=os.getenv("XAI_API_KEY"),
-            openai_api_base="https://api.x.ai/v1",
+        self.api_key = os.getenv("XAI_API_KEY")
+        self.base_url = "https://api.x.ai/v1"
+        self.model = "grok-3-mini"
+
+    def chat(self, prompt: str, use_search: bool = False) -> dict:
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}"
+        }
+        body = {
+            "model": self.model,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "max_tokens": 2000,
+            "temperature": 0
+        }
+        response = requests.post(
+            f"{self.base_url}/chat/completions",
+            headers=headers,
+            json=body,
+            timeout=60
         )
+        response.raise_for_status()
+        data = response.json()
+        content = data["choices"][0]["message"]["content"]
+        return {"content": content, "sources": []}
+
+    def search_and_chat(self, prompt: str) -> dict:
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}"
+        }
+        body = {
+            "model": "grok-3-mini",
+            "input": [
+                {"role": "user", "content": prompt}
+            ],
+            "tools": [
+                {"type": "web_search"},
+                {"type": "x_search"}
+            ]
+        }
+        try:
+            response = requests.post(
+                f"{self.base_url}/responses",
+                headers=headers,
+                json=body,
+                timeout=90
+            )
+            response.raise_for_status()
+            data = response.json()
+            content = ""
+            sources = []
+            for item in data.get("output", []):
+                if item.get("type") == "message":
+                    for block in item.get("content", []):
+                        if block.get("type") == "output_text":
+                            content = block.get("text", "")
+                if item.get("type") == "web_search_call":
+                    sources.append(f"Web: {item.get('query', '')}")
+                if item.get("type") == "x_search_call":
+                    sources.append(f"X: {item.get('query', '')}")
+            return {"content": content, "sources": sources}
+        except Exception as e:
+            print(f"Search API error: {e}, falling back to chat")
+            return self.chat(prompt)
+
+
+class Executor:
+    def __init__(self) -> None:
+        load_dotenv()
+        self.prompter = Prompter()
+        self.grok = GrokClient()
         self.gamma = Gamma()
-        self.chroma = Chroma()
         self.polymarket = Polymarket()
 
-    def get_llm_response(self, user_input: str) -> str:
-        system_message = SystemMessage(content=str(self.prompter.market_analyst()))
-        human_message = HumanMessage(content=user_input)
-        messages = [system_message, human_message]
-        result = self.llm.invoke(messages)
-        return result.content
-
-    def get_superforecast(
-        self, event_title: str, market_question: str, outcome: str
-    ) -> str:
-        messages = self.prompter.superforecaster(
-            description=event_title, question=market_question, outcome=outcome
-        )
-        result = self.llm.invoke(messages)
-        return result.content
-
-
-    def estimate_tokens(self, text: str) -> int:
-        # This is a rough estimate. For more accurate results, consider using a tokenizer.
-        return len(text) // 4  # Assuming average of 4 characters per token
-
-    def process_data_chunk(self, data1: List[Dict[Any, Any]], data2: List[Dict[Any, Any]], user_input: str) -> str:
-        system_message = SystemMessage(
-            content=str(self.prompter.prompts_polymarket(data1=data1, data2=data2))
-        )
-        human_message = HumanMessage(content=user_input)
-        messages = [system_message, human_message]
-        result = self.llm.invoke(messages)
-        return result.content
-
-
-    def divide_list(self, original_list, i):
-        # Calculate the size of each sublist
-        sublist_size = math.ceil(len(original_list) / i)
-        
-        # Use list comprehension to create sublists
-        return [original_list[j:j+sublist_size] for j in range(0, len(original_list), sublist_size)]
-    
-    def get_polymarket_llm(self, user_input: str) -> str:
-        data1 = self.gamma.get_current_events()
-        data2 = self.gamma.get_current_markets()
-        
-        combined_data = str(self.prompter.prompts_polymarket(data1=data1, data2=data2))
-        
-        # Estimate total tokens
-        total_tokens = self.estimate_tokens(combined_data)
-        
-        # Set a token limit (adjust as needed, leaving room for system and user messages)
-        token_limit = self.token_limit
-        if total_tokens <= token_limit:
-            # If within limit, process normally
-            return self.process_data_chunk(data1, data2, user_input)
-        else:
-            # If exceeding limit, process in chunks
-            chunk_size = len(combined_data) // ((total_tokens // token_limit) + 1)
-            print(f'total tokens {total_tokens} exceeding llm capacity, now will split and answer')
-            group_size = (total_tokens // token_limit) + 1 # 3 is safe factor
-            keys_no_meaning = ['image','pagerDutyNotificationEnabled','resolvedBy','endDate','clobTokenIds','negRiskMarketID','conditionId','updatedAt','startDate']
-            useful_keys = ['id','questionID','description','liquidity','clobTokenIds','outcomes','outcomePrices','volume','startDate','endDate','question','questionID','events']
-            data1 = retain_keys(data1, useful_keys)
-            cut_1 = self.divide_list(data1, group_size)
-            cut_2 = self.divide_list(data2, group_size)
-            cut_data_12 = zip(cut_1, cut_2)
-
-            results = []
-
-            for cut_data in cut_data_12:
-                sub_data1 = cut_data[0]
-                sub_data2 = cut_data[1]
-                sub_tokens = self.estimate_tokens(str(self.prompter.prompts_polymarket(data1=sub_data1, data2=sub_data2)))
-
-                result = self.process_data_chunk(sub_data1, sub_data2, user_input)
-                results.append(result)
-            
-            combined_result = " ".join(results)
-            
-        
-            
-            return combined_result
-    def filter_events(self, events: "list[SimpleEvent]") -> str:
-        prompt = self.prompter.filter_events(events)
-        result = self.llm.invoke(prompt)
-        return result.content
-
-    def filter_events_with_rag(self, events: "list[SimpleEvent]") -> list:
+    def filter_events_with_rag(self, events: list) -> list:
         try:
             events_text = "\n".join([
                 f"- ID:{e.id} | {e.title}"
@@ -138,115 +113,176 @@ class Executor:
             ])
             prompt = f"""
             {self.prompter.filter_events()}
-            
+
             Here are the available events:
             {events_text}
-            
-            Return ONLY a Python list of event IDs that pass the filter.
-            Example: [123, 456, 789]
+
+            Return ONLY a Python list of the 5 best event IDs.
+            Example: [123, 456, 789, 101, 202]
             Return ONLY the list, nothing else.
             """
-            messages = [HumanMessage(content=prompt)]
-            result = self.llm.invoke(messages)
-            content = result.content.strip()
-            import ast
+            result = self.grok.chat(prompt)
+            content = result["content"].strip()
             ids = ast.literal_eval(content)
             filtered = [e for e in events if e.id in ids]
+            if not filtered:
+                return events[:5]
             return filtered
         except Exception as ex:
-            print(f"Filter error: {ex}")
+            print(f"Filter events error: {ex}")
             return events[:5]
-            
-    def map_filtered_events_to_markets(
-            self, filtered_events: "list[SimpleEvent]"
-        ) -> "list[SimpleMarket]":
-            markets = []
-            for e in filtered_events:
-                try:
-                    if hasattr(e, 'markets'):
-                        market_ids = e.markets.split(",")
-                    else:
-                        data = json.loads(e[0].json())
-                        market_ids = data["metadata"]["markets"].split(",")
-                    for market_id in market_ids:
-                        if market_id.strip():
-                            market_data = self.gamma.get_market(market_id.strip())
-                            formatted_market_data = self.polymarket.map_api_to_market(market_data)
-                            markets.append(formatted_market_data)
-                except Exception as ex:
-                    print(f"Market mapping error: {ex}")
-                    continue
-            return markets
 
-    def filter_markets(self, markets) -> list:
+    def map_filtered_events_to_markets(self, filtered_events: list) -> list:
+        markets = []
+        for e in filtered_events:
+            try:
+                if hasattr(e, 'markets'):
+                    market_ids = e.markets.split(",")
+                else:
+                    data = json.loads(e[0].json())
+                    market_ids = data["metadata"]["markets"].split(",")
+                for market_id in market_ids:
+                    if market_id.strip():
+                        market_data = self.gamma.get_market(market_id.strip())
+                        formatted = self.polymarket.map_api_to_market(market_data)
+                        markets.append(formatted)
+            except Exception as ex:
+                print(f"Market mapping error: {ex}")
+                continue
+        return markets
+
+    def filter_markets(self, markets: list) -> list:
         try:
             markets_text = "\n".join([
-                f"- ID:{m.id if hasattr(m, 'id') else i} | {m.question if hasattr(m, 'question') else str(m)}"
+                f"- INDEX:{i} | {m.question if hasattr(m, 'question') else str(m)}"
                 for i, m in enumerate(markets[:20])
             ])
             prompt = f"""
             {self.prompter.filter_markets()}
-            
+
             Here are the available markets:
             {markets_text}
-            
+
             Return ONLY a Python list with the index numbers of the 3 best markets.
             Example: [0, 2, 5]
             Return ONLY the list, nothing else.
             """
-            messages = [HumanMessage(content=prompt)]
-            result = self.llm.invoke(messages)
-            content = result.content.strip()
-            import ast
+            result = self.grok.chat(prompt)
+            content = result["content"].strip()
             indices = ast.literal_eval(content)
             filtered = [markets[i] for i in indices if i < len(markets)]
+            if not filtered:
+                return markets[:3]
             return filtered
         except Exception as ex:
             print(f"Filter markets error: {ex}")
             return markets[:3]
 
-    def source_best_trade(self, market_object) -> str:
+    def source_best_trade(self, market_object) -> dict:
         try:
             if hasattr(market_object, 'question'):
                 question = market_object.question
-                description = market_object.description if hasattr(market_object, 'description') else question
-                outcome_prices = market_object.outcome_prices if hasattr(market_object, 'outcome_prices') else "[0.5, 0.5]"
-                outcomes = market_object.outcomes if hasattr(market_object, 'outcomes') else "['Yes', 'No']"
+                description = getattr(market_object, 'description', question)
+                outcome_prices = getattr(market_object, 'outcome_prices', "[0.5, 0.5]")
+                outcomes = getattr(market_object, 'outcomes', "['Yes', 'No']")
             else:
                 market_document = market_object[0].dict()
                 market = market_document["metadata"]
-                outcome_prices = ast.literal_eval(market["outcome_prices"])
-                outcomes = ast.literal_eval(market["outcomes"])
+                outcome_prices = market["outcome_prices"]
+                outcomes = market["outcomes"]
                 question = market["question"]
                 description = market_document["page_content"]
 
-            prompt = self.prompter.superforecaster(question, description, outcomes)
-            result = self.llm.invoke(prompt)
-            content = result.content
-            print("superforecaster result: ", content[:200])
+            search_prompt = f"""
+            You are a real-time market analyst for Polymarket prediction markets.
+            
+            Search the web and X/Twitter for the most recent information about:
+            "{question}"
+            
+            Find:
+            1. Latest news articles (last 48 hours)
+            2. Expert opinions and forecasts
+            3. Relevant tweets and social sentiment
+            4. Traditional betting market odds if available
+            5. Any data that helps estimate the real probability
+            
+            Summarize what you found with sources.
+            """
 
-            prompt = self.prompter.one_best_trade(content, outcomes, outcome_prices)
-            result = self.llm.invoke(prompt)
-            content = result.content
-            print("trade result: ", content[:200])
-            return content
+            print("Searching web and X for real-time data...")
+            search_result = self.grok.search_and_chat(search_prompt)
+            realtime_info = search_result["content"]
+            sources = search_result["sources"]
+
+            forecast_prompt = f"""
+            {self.prompter.superforecaster(question, description, outcomes)}
+
+            REAL-TIME INFORMATION FOUND:
+            {realtime_info}
+
+            Use this real-time data to improve your probability estimate.
+            """
+
+            forecast_result = self.grok.chat(forecast_prompt)
+            forecast = forecast_result["content"]
+
+            trade_prompt = f"""
+            {self.prompter.one_best_trade(forecast, outcomes, outcome_prices)}
+            """
+
+            trade_result = self.grok.chat(trade_prompt)
+            trade = trade_result["content"]
+
+            return {
+                "question": question,
+                "outcome_prices": outcome_prices,
+                "outcomes": outcomes,
+                "realtime_info": realtime_info,
+                "sources": sources,
+                "forecast": forecast,
+                "trade": trade
+            }
 
         except Exception as ex:
             print(f"source_best_trade error: {ex}")
-            return "price:0, size:0, side:NO_TRADE"
+            return {
+                "question": "Unknown",
+                "outcome_prices": "[0.5, 0.5]",
+                "outcomes": "['Yes', 'No']",
+                "realtime_info": "Error obtaining real-time data",
+                "sources": [],
+                "forecast": "Error in forecast",
+                "trade": "price:0, size:0, side:NO_TRADE"
+            }
 
-    def format_trade_prompt_for_execution(self, best_trade: str) -> float:
-        data = best_trade.split(",")
-        # price = re.findall("\d+\.\d+", data[0])[0]
-        size = re.findall("\d+\.\d+", data[1])[0]
-        usdc_balance = self.polymarket.get_usdc_balance()
-        return float(size) * usdc_balance
+    def format_trade_prompt_for_execution(self, trade_data: dict) -> float:
+        try:
+            trade = trade_data.get("trade", "")
+            size_match = re.findall(r"size['\"]?\s*:\s*([0-9.]+)", trade)
+            if size_match:
+                size = float(size_match[0])
+            else:
+                size = 0.0
+            usdc_balance = self.polymarket.get_usdc_balance()
+            return size * usdc_balance
+        except Exception as ex:
+            print(f"format_trade error: {ex}")
+            return 0.0
+
+    def get_llm_response(self, user_input: str) -> str:
+        result = self.grok.chat(user_input)
+        return result["content"]
+
+    def get_superforecast(self, event_title: str, market_question: str, outcome: str) -> str:
+        prompt = self.prompter.superforecaster(
+            description=event_title,
+            question=market_question,
+            outcome=outcome
+        )
+        result = self.grok.chat(prompt)
+        return result["content"]
 
     def source_best_market_to_create(self, filtered_markets) -> str:
         prompt = self.prompter.create_new_market(filtered_markets)
-        print()
-        print("... prompting ... ", prompt)
-        print()
-        result = self.llm.invoke(prompt)
-        content = result.content
-        return content
+        result = self.grok.chat(prompt)
+        return result["content"]
