@@ -2,7 +2,16 @@ from agents.application.executor import Executor as Agent
 from agents.polymarket.gamma import GammaMarketClient as Gamma
 from agents.polymarket.polymarket import Polymarket
 from notifier import send_telegram
+from datetime import datetime
 import shutil
+import pytz
+
+
+def get_timestamp():
+    madrid = pytz.timezone("Europe/Madrid")
+    now = datetime.now(madrid)
+    return now.strftime("%d/%m/%Y %H:%M UTC+1")
+
 
 class Trader:
     def __init__(self):
@@ -23,59 +32,125 @@ class Trader:
         except:
             pass
 
+    def get_wallet_info(self) -> str:
+        try:
+            balance = self.polymarket.get_usdc_balance()
+            address = self.polymarket.get_address()
+            short = f"{str(address)[:6]}...{str(address)[-4:]}"
+            return balance, short
+        except:
+            return 0.0, "0x????...????"
+
     def one_best_trade(self) -> None:
-        send_telegram("Ciclo iniciado")
+        ts = get_timestamp()
+        balance, wallet = self.get_wallet_info()
+
+        send_telegram(
+            f"AGENTE INICIADO\n"
+            f"Fecha y hora: {ts}\n"
+            f"Bankroll: ${round(float(balance), 2)} USDC\n"
+            f"Wallet: {wallet}"
+        )
+
         self.pre_trade_logic()
 
         events = self.polymarket.get_all_tradeable_events()
-        print(f"1. FOUND {len(events)} EVENTS")
-        send_telegram(f"Eventos encontrados: {len(events)}")
+        send_telegram(
+            f"PASO 1 - BUSQUEDA\n"
+            f"Eventos activos encontrados: {len(events)}\n"
+            f"Fuente: Polymarket API"
+        )
 
         if not events:
-            send_telegram("Sin eventos disponibles. Saltando ciclo.")
+            send_telegram("SIN EVENTOS DISPONIBLES. Saltando ciclo.")
             return
 
-        send_telegram("Filtrando eventos con Grok...")
+        send_telegram("PASO 2 - FILTRANDO EVENTOS CON GROK...")
         filtered_events = self.agent.filter_events_with_rag(events)
-        print(f"2. FILTERED {len(filtered_events)} EVENTS")
-        send_telegram(f"Eventos filtrados: {len(filtered_events)}")
+
+        events_list = "\n".join([
+            f"  - {e.title[:60]}" for e in filtered_events[:5]
+        ])
+        send_telegram(
+            f"EVENTOS SELECCIONADOS: {len(filtered_events)}\n"
+            f"{events_list}"
+        )
 
         if not filtered_events:
-            send_telegram("Ningun evento paso el filtro. Saltando ciclo.")
+            send_telegram("NINGUN EVENTO PASO EL FILTRO. Saltando ciclo.")
             return
 
-        send_telegram("Mapeando eventos a mercados...")
+        send_telegram("PASO 3 - MAPEANDO MERCADOS...")
         markets = self.agent.map_filtered_events_to_markets(filtered_events)
-        print(f"3. FOUND {len(markets)} MARKETS")
-        send_telegram(f"Mercados encontrados: {len(markets)}")
+        send_telegram(
+            f"MERCADOS ENCONTRADOS: {len(markets)}\n"
+            f"Procesando para seleccionar los mejores..."
+        )
 
         if not markets:
-            send_telegram("Sin mercados disponibles. Saltando ciclo.")
+            send_telegram("SIN MERCADOS DISPONIBLES. Saltando ciclo.")
             return
 
-        send_telegram("Filtrando mejores mercados con Grok...")
+        send_telegram("PASO 4 - FILTRANDO MEJORES MERCADOS CON GROK...")
         filtered_markets = self.agent.filter_markets(markets)
-        print(f"4. FILTERED {len(filtered_markets)} MARKETS")
-        send_telegram(f"Mercados filtrados: {len(filtered_markets)}")
+
+        markets_list = "\n".join([
+            f"  - {m.question[:60] if hasattr(m, 'question') else str(m)[:60]}"
+            for m in filtered_markets[:3]
+        ])
+        send_telegram(
+            f"MERCADOS SELECCIONADOS: {len(filtered_markets)}\n"
+            f"{markets_list}"
+        )
 
         if not filtered_markets:
-            send_telegram("Ningun mercado paso el filtro. Saltando ciclo.")
+            send_telegram("NINGUN MERCADO PASO EL FILTRO. Saltando ciclo.")
             return
 
-        send_telegram("Grok analizando mejor trade...")
         market = filtered_markets[0]
-        best_trade = self.agent.source_best_trade(market)
-        print(f"5. CALCULATED TRADE {best_trade}")
-        send_telegram(f"Analisis de Grok:\n{str(best_trade)[:1000]}")
+        question = market.question if hasattr(market, 'question') else "Unknown"
+        price_yes = market.outcome_prices if hasattr(market, 'outcome_prices') else "N/A"
 
-        send_telegram("Calculando tamano de posicion...")
+        send_telegram(
+            f"PASO 5 - MERCADO PARA ANALISIS:\n"
+            f"Pregunta: {question[:100]}\n"
+            f"Precios: {price_yes}"
+        )
+
+        send_telegram("PASO 6 - BUSCANDO INFO EN TIEMPO REAL...\n(Web + X/Twitter via Grok)")
+        trade_data = self.agent.source_best_trade(market)
+
+        sources_text = "\n".join([
+            f"  - {s}" for s in trade_data.get("sources", [])[:5]
+        ]) or "  - Sin fuentes externas encontradas"
+
+        send_telegram(
+            f"INFORMACION EN TIEMPO REAL:\n"
+            f"{trade_data.get('realtime_info', 'No disponible')[:500]}\n\n"
+            f"FUENTES CONSULTADAS:\n{sources_text}"
+        )
+
+        send_telegram(
+            f"PASO 7 - ANALISIS GROK (SUPERFORECASTER):\n"
+            f"{trade_data.get('forecast', 'No disponible')[:600]}"
+        )
+
+        trade = trade_data.get("trade", "price:0, size:0, side:NO_TRADE")
+        send_telegram(
+            f"PASO 8 - DECISION FINAL:\n"
+            f"{trade[:400]}"
+        )
+
         try:
-            amount = self.agent.format_trade_prompt_for_execution(best_trade)
-            send_telegram(f"Tamano calculado: {round(float(amount), 4)} USDC - Simulacion, trade NO ejecutado")
+            amount = self.agent.format_trade_prompt_for_execution(trade_data)
+            send_telegram(
+                f"PASO 9 - GESTION DE CAPITAL:\n"
+                f"Tamano calculado: ${round(float(amount), 4)} USDC\n"
+                f"Estado: SIMULACION - Trade NO ejecutado\n"
+                f"Proximo ciclo en 10 minutos."
+            )
         except Exception as e:
-            send_telegram(f"Error calculando tamano: {e}")
-
-        send_telegram("Ciclo completado. Proximo ciclo en 10 minutos.")
+            send_telegram(f"Error calculando tamano: {e}\nProximo ciclo en 10 minutos.")
 
         # Please refer to TOS before uncommenting: polymarket.com/tos
         # trade = self.polymarket.execute_market_order(market, amount)
@@ -87,6 +162,17 @@ class Trader:
     def incentive_farm(self):
         pass
 
+
 if __name__ == "__main__":
     t = Trader()
     t.one_best_trade()
+```
+
+---
+
+## Archivo 3 — `requirements.txt`
+
+Abre el `requirements.txt` actual y añade estas líneas al final si no están:
+```
+requests
+pytz
