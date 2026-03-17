@@ -62,7 +62,7 @@ class GrokClient:
             "Authorization": f"Bearer {self.api_key}"
         }
         body = {
-            "model": "grok-3-mini",
+            "model": "grok-3",
             "input": [
                 {"role": "user", "content": prompt}
             ],
@@ -91,6 +91,9 @@ class GrokClient:
                     sources.append(f"Web: {item.get('query', '')}")
                 if item.get("type") == "x_search_call":
                     sources.append(f"X: {item.get('query', '')}")
+            if not content:
+                print("Empty response from Responses API, falling back to chat")
+                return self.chat(prompt)
             return {"content": content, "sources": sources}
         except Exception as e:
             print(f"Search API error: {e}, falling back to chat")
