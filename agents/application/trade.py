@@ -134,7 +134,8 @@ class Trader:
         send_telegram(
             f"INFORMACION EN TIEMPO REAL:\n"
             f"{trade_data.get('realtime_info', 'No disponible')[:500]}\n\n"
-            f"FUENTES CONSULTADAS:\n{sources_text}"
+            f"FUENTES CONSULTADAS:\n{sources_text}\n\n"
+            f"DEBUG API: {trade_data.get('api_debug', 'Sin debug')}"
         )
 
         send_telegram(
