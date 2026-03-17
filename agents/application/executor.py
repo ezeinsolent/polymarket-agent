@@ -78,6 +78,8 @@ class GrokClient:
                 json=body,
                 timeout=90
             )
+            print(f"Responses API status: {response.status_code}")
+            print(f"Responses API body: {response.text[:500]}")
             response.raise_for_status()
             data = response.json()
             content = ""
@@ -92,13 +94,12 @@ class GrokClient:
                 if item.get("type") == "x_search_call":
                     sources.append(f"X: {item.get('query', '')}")
             if not content:
-                print("Empty response from Responses API, falling back to chat")
                 return self.chat(prompt)
             return {"content": content, "sources": sources}
         except Exception as e:
-            print(f"Search API error: {e}, falling back to chat")
+            print(f"Search API error: {e}")
+            print(f"Response: {response.text[:300] if 'response' in locals() else 'No response'}")
             return self.chat(prompt)
-
 
 class Executor:
     def __init__(self) -> None:
