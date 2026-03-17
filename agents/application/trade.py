@@ -93,6 +93,7 @@ class Trader:
 
         send_telegram("PASO 4 - FILTRANDO MEJORES MERCADOS CON GROK...")
         filtered_markets = self.agent.filter_markets(markets)
+        send_telegram(f"DEBUG mercado: {type(filtered_markets[0])} | {str(filtered_markets[0])[:200]}")
 
         markets_list = "\n".join([
             f"  - {m.question[:60] if hasattr(m, 'question') else str(m)[:60]}"
