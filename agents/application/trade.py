@@ -32,7 +32,7 @@ class Trader:
         except:
             pass
 
-    def get_wallet_info(self) -> str:
+    def get_wallet_info(self):
         try:
             balance = self.polymarket.get_usdc_balance()
             address = self.polymarket.get_address()
@@ -93,7 +93,9 @@ class Trader:
 
         send_telegram("PASO 4 - FILTRANDO MEJORES MERCADOS CON GROK...")
         filtered_markets = self.agent.filter_markets(markets)
-        send_telegram(f"DEBUG mercado: {type(filtered_markets[0])} | {str(filtered_markets[0])[:200]}")
+        send_telegram(
+            f"DEBUG mercado: {type(filtered_markets[0])} | {str(filtered_markets[0])[:200]}"
+        )
 
         markets_list = "\n".join([
             f"  - {m.question[:60] if hasattr(m, 'question') else str(m)[:60]}"
@@ -153,7 +155,6 @@ class Trader:
         except Exception as e:
             send_telegram(f"Error calculando tamano: {e}\nProximo ciclo en 10 minutos.")
 
-        # Please refer to TOS before uncommenting: polymarket.com/tos
         # trade = self.polymarket.execute_market_order(market, amount)
         # print(f"6. TRADED {trade}")
 
@@ -167,13 +168,3 @@ class Trader:
 if __name__ == "__main__":
     t = Trader()
     t.one_best_trade()
-```
-
----
-
-## Archivo 3 — `requirements.txt`
-
-Abre el `requirements.txt` actual y añade estas líneas al final si no están:
-```
-requests
-pytz
