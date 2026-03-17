@@ -111,8 +111,12 @@ class Trader:
             return
 
         market = filtered_markets[0]
-        question = market.question if hasattr(market, 'question') else "Unknown"
-        price_yes = market.outcome_prices if hasattr(market, 'outcome_prices') else "N/A"
+        if isinstance(market, dict):
+            question = market.get('question', 'Unknown')
+            price_yes = market.get('outcome_prices', 'N/A')
+        else:
+            question = market.question if hasattr(market, 'question') else "Unknown"
+            price_yes = market.outcome_prices if hasattr(market, 'outcome_prices') else "N/A"
 
         send_telegram(
             f"PASO 5 - MERCADO PARA ANALISIS:\n"
